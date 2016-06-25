@@ -1,11 +1,10 @@
-## 作者 zhaojunlike@
-## QQ： 1716771371
-## 目的： 课程设计
-## 实现： java+redis
+## 作者 ： zhaojunlike@
+##  QQ  ： 1716771371
+## 目的 ： 课程设计
+## 实现 ： java+redis
+
 
 ### (✿◕‿◕✿)
-
-## Github：https://github.com/zhaojunlike/downloadGrilPng
 
 
 ## 安装说明
