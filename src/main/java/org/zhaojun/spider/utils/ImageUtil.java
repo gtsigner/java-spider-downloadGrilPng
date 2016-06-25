@@ -55,7 +55,7 @@ public class ImageUtil {
             // 打开连接
             URLConnection con = url.openConnection();
             //设置请求超时为5s
-            con.setConnectTimeout(5 * 1000);
+            con.setConnectTimeout(3 * 1000);
             // 输入流
             InputStream is = con.getInputStream();
 
@@ -79,9 +79,8 @@ public class ImageUtil {
             os.close();
 
 
-        } catch (IOException e) {
-            e.printStackTrace();
-            callBack.equals(e.getMessage());
+        } catch (Exception e) {
+            callBack.error(e.getMessage());
         }
     }
 

@@ -69,6 +69,8 @@ public class SpiderController {
     protected boolean isImagesParsing = false;//正在解析图片
 
     protected Timer timer;
+    protected Timer downTimer;
+
 
     protected String userAgent = "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:47.0) Gecko/20100101 Firefox/47.0";
 
@@ -78,10 +80,6 @@ public class SpiderController {
         logsControl = new LogsController();
         httpClient = HttpAsyncClients.createDefault();
         this.httpClient.start();
-        /**
-         * 相当于心跳函数
-         *
-         */
 
 
         /**
@@ -90,11 +88,11 @@ public class SpiderController {
         this.timer = new Timer(10000, new ActionListener() {
             public void actionPerformed(ActionEvent e) {
 
-                if (isPagesParsing == false && currentPageNum <= maxPageNum) {
+                if (isPagesParsing == false) {
                     isPagesParsing = true;
-                    initPages(xxooRoot);//解析分页数据
+                    //initPages(xxooRoot);//解析分页数据
                 }
-                if (isSrcParsing == false) {
+                if (isSrcParsing == false && currentPageNum <= maxPageNum) {
                     isSrcParsing = true;
                     initSrc(pageRoot);//从分页数据中解析详细的妹子图数据
                 }
@@ -107,33 +105,37 @@ public class SpiderController {
 
             }
         });
-        timer.start();
+        //timer.start();
 
 
 
         /*3秒心跳下载一个图片*/
-        Timer downTimer = new Timer(2000, new ActionListener() {
+        downTimer = new Timer(1000, new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 //定时器去发送函数心跳包
                 if (isImgDownloading == false) {
                     String url = jedis.lpop(redis_img_key);//获取一个源
                     if (url != null) {
-                        System.out.println("下载图片：" + url);
+                        System.out.println("Doing Download：开始下载妹子图片-Url=" + url);
                         isImgDownloading = true;
-                        ImageUtil.downloadImg(url, ImageUtil.createFileName() + ".jpg", "./download/" + ImageUtil.createSavePath() + "/", new DownloadImgCallBack() {
-                            public void success(String fileSaveName, String savePath) {
-                                isImgDownloading = false;
-                                System.out.println("图片下载成功保存路径:" + savePath + fileSaveName);
-                            }
+                        try {
 
-                            public void error(String msg) {
-                                isImgDownloading = false;
-                            }
-                        });
-                        System.out.println("1");
+                            ImageUtil.downloadImg(url, ImageUtil.createFileName() + ".jpg", Conf.Download_Path + ImageUtil.createSavePath() + "/", new DownloadImgCallBack() {
+                                public void success(String fileSaveName, String savePath) {
+                                    isImgDownloading = false;
+                                    System.out.println("图片下载成功:" + savePath + fileSaveName);
+                                }
 
+                                public void error(String msg) {
+                                    isImgDownloading = false;
+                                    System.out.println(msg);
+                                }
+                            });
+                        } catch (Exception ex) {
+
+                        }
                     } else {
-                        System.out.println("redis列表里面没有图片了");
+                        logsControl.console("Doing Download：redis列表里面没有图片了", LogsController.LOG_ERROR);
                     }
                 }
             }
@@ -144,6 +146,7 @@ public class SpiderController {
 
     /**
      * 加载列表数据分页，其实只是需要判断最大页面数量
+     * 其实这个只需要在开始运行一次就行了，所以不用把isPageDoing设置true
      *
      * @param url
      */
@@ -156,7 +159,6 @@ public class SpiderController {
          */
         Future<HttpResponse> future = httpClient.execute(get, new FutureCallback<HttpResponse>() {
             public void completed(HttpResponse httpResponse) {
-
                 StatusLine statusLine = httpResponse.getStatusLine();
                 if (statusLine.getStatusCode() != 200) {
                     //请求失败，切换代理模式
@@ -174,14 +176,13 @@ public class SpiderController {
                             String str = matcher.group();
                             str = str.replace("<span class=\"meta-nav screen-reader-text\"></span>", "");
                             str = str.replace("\n", "");
-                            System.out.println(str);
+                            System.out.println("解析分页：" + str);
                         }
 
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
                 }
-
             }
 
             public void failed(Exception e) {
@@ -213,10 +214,9 @@ public class SpiderController {
                 StatusLine statusLine = httpResponse.getStatusLine();
                 if (statusLine.getStatusCode() != 200) {
                     //请求失败，切换代理模式
-                    System.out.println("请求失败");
+                    System.out.println("请求失败，切换代理解决");
                 } else {
                     HttpEntity entity = httpResponse.getEntity();
-                    System.out.println("开始解析Html---");
                     try {
                         String htmlDom = EntityUtils.toString(entity);//获取到静态页面
                         //进行缓存
@@ -224,27 +224,23 @@ public class SpiderController {
                         System.out.println(htmlDom);
                         Pattern p = Pattern.compile("<ul id=\"pins\"([\\s\\S]*)</ul>");//匹配所有图片信息
                         Matcher matcher = p.matcher(htmlDom);
-                        System.out.println("Doing：匹配妹子图列列表");
+                        System.out.println("Doing Src：匹配妹子图列列表");
                         while (matcher.find()) {
                             String str = matcher.group();
                             Pattern pli = Pattern.compile("<li>([\\s\\S]*?)</li>");
                             Matcher matcherLi = pli.matcher(str);
                             while (matcherLi.find()) {
                                 String srcc = XxOoUtil.matchSource(matcherLi.group());
-                                System.out.println("Doing：解析妹子图路径" + srcc);
+                                System.out.println("Doing Src：解析妹子图详细页面路径" + srcc);
                                 jedis.rpush(redis_src_key, srcc);//加入redis右边
                             }
-                            //ul中
                         }
-                        System.out.println("结束页面采集：current-" + currentPageNum);
+                        System.out.println("Doing Src：结束页面采集 current-" + currentPageNum);
                         currentPageNum++;
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
-
-                    //这里触发调用下载
                 }
-
             }
 
             public void failed(Exception e) {
@@ -279,7 +275,7 @@ public class SpiderController {
                 StatusLine statusLine = httpResponse.getStatusLine();
                 if (statusLine.getStatusCode() != 200) {
                     //请求失败，切换代理模式
-                    System.out.println("请求失败");
+                    logsControl.console("请求失败", LogsController.LOG_ERROR);
                 } else {
                     HttpEntity entity = httpResponse.getEntity();
                     try {
@@ -324,27 +320,25 @@ public class SpiderController {
                             builder.replace(at, at + 2, page);
                             //array[at] = page.substring(0, 1).toCharArray()[0];//第一个字符
                             //array[at + 1] = page.substring(1, 2).toCharArray()[0];//第二个字符
-                            System.out.println("成功获取图片：" + builder.toString());
+                            System.out.println("Doing Images：成功获取图片：" + builder.toString());
                             jedis.rpush(redis_img_key, builder.toString());//加入
                         }
-
-                        System.out.println("这次找到该页妹子图：" + max + "张");
-
+                        System.out.println("Doing Images：找到该妹子套组图 共" + max + "张");
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
-
-                    //这里触发调用下载
                 }
 
+                isImagesParsing = false;
             }
 
             public void failed(Exception e) {
-
+                isImagesParsing = false;
+                logsControl.console("对不起解析异常", LogsController.LOG_ERROR);
             }
 
             public void cancelled() {
-
+                isImagesParsing = false;
             }
         });
     }
@@ -354,17 +348,17 @@ public class SpiderController {
      */
     public void stop() {
         this.timer.stop();
+        this.downTimer.stop();
     }
 
     /**
      * 销毁资源
      */
     public void destroy() {
+        System.out.println("释放系统资源...");
         jedis = null;
         try {
             httpClient.close();
-
-
         } catch (IOException e) {
             e.printStackTrace();
         }

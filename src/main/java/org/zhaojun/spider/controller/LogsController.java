@@ -20,7 +20,14 @@ public class LogsController {
      */
     public void console(String msg, int level) {
 
-        System.out.println(msg);
+        switch (level) {
+            case LOG_ERROR:
+                System.err.println(msg);
+                break;
+            default:
+                System.out.println(msg);
+                break;
+        }
     }
 
     /**
